@@ -1,2 +1,2 @@
 # Salou--the-Photo-Booth
-Ipad compatible photo booth 
+salou.html
