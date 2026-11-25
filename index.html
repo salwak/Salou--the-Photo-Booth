@@ -11,6 +11,25 @@ button{min-height:44px;touch-action:manipulation}input,select{font-size:16px!imp
 .guest #download,
 .guest #downloadSheet {
     display: none !important;
+}
+    /* Delete and retake button */
+
+#retake {
+    display: none;
+}
+
+.guest #retake {
+    display: block;
+    background: #fffdf7;
+    color: #984b50;
+    border: 1px solid #984b50;
+    border-radius: 9px;
+    font-size: 18px;
+    min-height: 48px;
+}
+
+.guest #retake:not(:disabled):hover {
+    background: #f3e1dd;
 }</style>
 <style id="pageStyle">@page{size:2in 6in;margin:0}</style>
 </head>
@@ -33,7 +52,9 @@ button{min-height:44px;touch-action:manipulation}input,select{font-size:16px!imp
 <label class="field"><span>Event title</span><input id="caption" maxlength="45" value="little moments" placeholder="Your event name"></label><label class="field"><span>Subtitle</span><input id="subtitle" maxlength="65" value="a day to remember" placeholder="A name, date or message"></label>
 <label class="field"><span>Typography</span><select id="font"><option value="serif">Elegant serif</option><option value="italic">Italic serif</option><option value="sans">Modern sans</option><option value="mono">Typewriter</option></select></label>
 <label class="field"><span>Decoration</span><select id="decor"><option value="none">None</option><option value="stars">Little stars</option><option value="hearts">Hearts</option><option value="line" selected>Fine line</option></select></label><label class="check"><input id="showDate" type="checkbox"> Include today's date</label></section>
-<section class="panel preview-panel"><div class="panel-head"><h2>Print preview</h2><span class="step">03 / Keep</span></div><div class="preview-area"><canvas id="strip" width="600" height="1800" aria-label="Live photo strip preview"></canvas></div><p class="preview-info">2 × 6 inches · 600 × 1800 pixels</p><label class="field"><span>Paper layout</span><select id="layout"><option value="double">4 × 6 in — two identical strips</option><option value="single">2 × 6 in — one strip</option><option value="a4">A4 — two strips, trim to size</option></select></label><div class="print-buttons"><button class="primary" id="print" disabled>Print photo strip</button><button id="download" disabled>     Save to iPad </button>  <button id="airdrop" disabled>     AirDrop photo strip </button><button id="downloadSheet" disabled>Download print sheet (PNG)</button><button id="next" disabled>Finish &amp; next guest</button><p class="note guest-hint">Printing opens the iPad print dialog. If you cancel, you can try again before moving on.</p></div><p class="note">Print at 100% / Actual size with margins and headers off. Use a compatible photo-paper size, or select A4 and trim the strips.</p></section>
+<section class="panel preview-panel"><div class="panel-head"><h2>Print preview</h2><span class="step">03 / Keep</span></div><div class="preview-area"><canvas id="strip" width="600" height="1800" aria-label="Live photo strip preview"></canvas></div><p class="preview-info">2 × 6 inches · 600 × 1800 pixels</p><label class="field"><span>Paper layout</span><select id="layout"><option value="double">4 × 6 in — two identical strips</option><option value="single">2 × 6 in — one strip</option><option value="a4">A4 — two strips, trim to size</option></select></label><div class="print-buttons"><button class="primary" id="print" disabled>Print photo strip</button><button id="download" disabled>     Save to iPad </button>  <button id="airdrop" disabled>     AirDrop photo strip </button><button id="downloadSheet" disabled>Download print sheet (PNG)</button><button id="retake" type="button" disabled>
+    Delete &amp; retake
+</button><button id="next" disabled>Finish &amp; next guest</button><p class="note guest-hint">Printing opens the iPad print dialog. If you cancel, you can try again before moving on.</p></div><p class="note">Print at 100% / Actual size with margins and headers off. Use a compatible photo-paper size, or select A4 and trim the strips.</p></section>
 </div><section id="gallery" class="panel gallery host-only" hidden><div class="panel-head"><h2>Event session gallery</h2><span id="galleryCount" class="step">0 sessions</span></div><p class="note">Finished strips are stored in this browser only, if saving is enabled. Ask guests before keeping their photos. Export or print important photos before clearing browser data.</p><div class="gallery-actions"><button id="printAll" class="primary">Print all saved strips</button><button id="exportAll">Download all (ZIP)</button><button id="clearAll">Delete all saved strips</button></div><div id="galleryList" class="gallery-list"></div></section><p class="footer host-only">Photos stay in this browser. Guest mode is a simplified interface, not a password-protected kiosk. Save or export important strips before clearing website data.</p>
 </main><div class="print-sheet" id="printSheet" aria-hidden="true"></div>
 <script>
@@ -199,7 +220,102 @@ setControls = function () {
 };
 
 setControls();
+// SALOU — Delete and retake guest photos
 
+async function retakeGuestPhotos() {
+
+    if (!guest || busy || moving ||
+        photos.length !== slots()) {
+        return;
+    }
+
+    moving = true;
+    setControls();
+
+    const rejectedId = sessionId;
+
+    // Stop any pending automatic saving
+    clearTimeout(saveTimer);
+
+    try {
+
+        // Wait for existing saves to finish
+        await ready;
+        await saveChain;
+
+        // Delete this strip from permanent storage
+        if (dbReady) {
+            await transaction(
+                "readwrite",
+                store => store.delete(rejectedId)
+            );
+        }
+
+        // Remove only this strip from the gallery
+        records = records.filter(
+            record => record.id !== rejectedId
+        );
+
+        refreshGallery();
+
+    } catch (error) {
+
+        moving = false;
+        archiveError = true;
+        refreshGallery();
+        setControls();
+
+        alert(
+            "Could not delete the photo strip. Please try again."
+        );
+
+        return;
+    }
+
+    // Clear the old photographs
+    moving = false;
+    resetSession();
+
+    status("Let's try again!");
+
+    // Automatically start a new photo session
+    if (stream) {
+        runSession(false);
+    } else {
+        status("Enable the camera to retake your photos.");
+    }
+}
+
+
+// Connect the new button
+
+$("retake").onclick = retakeGuestPhotos;
+
+
+// Update button availability
+
+const controlsBeforeRetake = setControls;
+
+setControls = function () {
+
+    controlsBeforeRetake();
+
+    $("retake").disabled =
+        !guest ||
+        busy ||
+        moving ||
+        photos.length !== slots();
+
+    if (moving) {
+        $("print").disabled = true;
+        $("download").disabled = true;
+        $("downloadSheet").disabled = true;
+        $("airdrop").disabled = true;
+    }
+};
+
+setControls();
+    
 </script>
 </body>
 </html>
