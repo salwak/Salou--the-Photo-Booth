@@ -1,2 +1,2 @@
 # Salou--the-Photo-Booth
-salou.html
+index.html
